@@ -39,7 +39,11 @@ soma.cm = 1         # membrane capacitance in uF/cm2
 # voltage
 soma.insert('hh')          
 soma.gl_hh = 0.0003   #leakage conductance in S/cm2
-
+''' Below are all set parameters '''
+V_th = -50  #setting the threshold voltage as -50 mV
+V_reset = -77       #setting the resetting voltage to be -77 mV 
+E_L = -54.3     #setting the leakage voltage
+Resistance = soma.Ra*(soma.L/1000000.0)/(np.pi*(15/1000000.0)**2)
 
 ##################################################################
 # Model instrumentation
@@ -49,7 +53,7 @@ soma.gl_hh = 0.0003   #leakage conductance in S/cm2
 iclamp = neuron.h.IClamp(0.5, sec=soma)
 iclamp.delay = 10. # current delay period in ms
 iclamp.dur = 300.   # duration of stimulus current in ms
-iclamp.amp = 0.2    # amplitude of current in nA
+iclamp.amp = 0.3    # amplitude of current in nA
 
 # print out section information again
 neuron.h.psection()
@@ -111,36 +115,54 @@ axes[1].set_xlabel('time (ms)')
 ##################################################################
 # Find the number of spikings for constant DC current injection
 ##################################################################
-v2=np.array(v.to_python);
-t2=np.array(t.to_python);
-ndcs=peakutils.indexes(v2,thres = 0.0); #somehow the peakutils is ignoring the thres
+v2=np.array(v.to_python)
+t2=np.array(t.to_python)
+ndcs=peakutils.indexes(v2,thres = 0.0) #somehow the peakutils is ignoring the thres
 ndcs2=ndcs[v2[ndcs]>0]  #here we are ignoring the initial blip
-targt=len(ndcs2)/(max(t2)-0); #the length of t is multiplied by a factor of 10, and
-                                #and this has to be the simulation time
-print(targt);   #targt is the target frequency we should be aiming at
+targt=len(ndcs2)/(max(t2)-0)    #the length of t is multiplied by a factor of 10, and
+                                #and this has to be the simulation time. 
+                                #This calculation gives us the frequency
+''' Frequency calculated in ms '''
+print(targt)   #targt is the target frequency we should be aiming at
+
+targt_rescale=targt*1000
+
+##################################################################
+#Calculating the averaged sine amplitude
+##################################################################
+tau_m=(soma.cm/1000000.0)/(soma.gl_hh)
+I_e=(targt_rescale*tau_m*(V_th-V_reset)+V_th-E_L)/Resistance
+
+Current=I_e*1000000     #To convert everything back in nA
+
 
 ##################################################################
 # Creating the 'for loop' to find the best frequency and amplitude
 # of the sine input to match the constant current injection
 ##################################################################
-output=np.inf;
-idx=1;
-Theta=np.linspace(1.0 ,10.0 ,num=10); #For the averaged sine, for high frequence, the only
-                                 #dependent will be on Amp/2; while it is something in
-                                 #the middle, we have a joint dependency.
-Ts=np.linspace(0, 3000, num=3000);
-Amp=0.2;
+idx=1
+Ts=np.linspace(0, 3000, num=3000)
+Theta=np.linspace(0.1, 10.0, num=1000) 
+Ampout=[]
+#Amp=np.linspace(0.1, 3, num=100)
 
+for idx in range (1000):
+    Amp=Current/(1/(2*np.pi*Theta[idx])*(1-np.cos(2*np.pi*Theta[idx]*3000))+1)
+    Ampout.append(Amp)
+    
 '''we want to find some A and F relationships'''
 
-outputs=[];
-sinesave=[];
-for idx in range(1,10):   #The idx should match the freq numbers
-    sine=Amp*scipy.sin(2*np.pi*Ts*Theta[idx])+Amp;
-    sineinj=neuron.h.Vector(sine[1:]);
+output=np.inf
+idx2=1
+outputs=[]
+sinesave=[]
+for idx2 in range(1000):   #The idx should match the freq numbers
+    
+    sine=Amp*scipy.sin(2*np.pi*Ts*Theta[idx2])+Amp
+    sineinj=neuron.h.Vector(sine[1:])
     
     #play the sine inject current into the amplitude reference for every dt
-    dt=0.1;
+    dt=0.1
     sineinj.play(iclamp._ref_amp, dt)
 
     ##################################################################
@@ -175,7 +197,7 @@ for idx in range(1,10):   #The idx should match the freq numbers
     else: 
         bestout=output;
         print(bestout);
-        bestfreq=Theta[idx]
+        bestfreq=Theta[idx2]
         print(bestfreq)
 
 ##################################################################
